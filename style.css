@@ -1,0 +1,34 @@
+body{
+    background-color: #202432;
+}
+.COMMENT{
+    color: #597369;
+}
+.RESERVADO{
+    color: #22a8af;
+}
+
+
+.ERROR{
+    color: red;
+    border-bottom: 2px solid red;
+    border-radius: 5px;
+}
+
+.IDENTIFIER{
+    color: whitesmoke;
+}
+.OPERATOR{
+    color: #ef002f;
+}
+.NUMBER{
+    color: #f99157;
+}
+
+.SEPARATOR{
+    color: #ef002f;
+}
+
+.OPENER, .CLOSER, .BRACKET, .PARENTHESIS{
+    color: #179fde;
+}
