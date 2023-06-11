@@ -1,8 +1,11 @@
-//Aqui hay un comentario
-let a = 1
-let b = 14 * 2
-functio funcion1(a,b,c,d){
-    for(let i = 1; i<5; i = i +1){
-        let c = i*19+(14*2)
-    }
+let 1a = 1+2
+//comentario
+fora(let i = 0; i < 5; i = i+1){
+    let b = 2
+    b = 1+i
+
+}
+
+functio a(a,b,c){
+    print a+b+c
 }

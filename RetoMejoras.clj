@@ -1,4 +1,5 @@
 (require '[clojure.java.io :as io])
+(declare is_OPERATION)
 (def reservedWords ["let" "const" "function" "for" "while" "return" "print"])
 
 (defn tokenize_complete [line]
@@ -18,7 +19,6 @@
 )
 
 (defn is_PARAMETER [string_list NewList]
-  ;(print string_list)
   (if (nil? string_list)
     [:SPACE ""]
     (if (string? string_list)
@@ -70,29 +70,33 @@
   )
 )
 
-(defn is_OPERATION [string_list NewList]
+(defn is_OPERATION [string_list NewList complete_string]
   (if (string? string_list)
-    (if (re-matches #".*[+\-*\/]\s*$" string_list)
-      [:ERROR string_list]
-      (is_OPERATION (re-seq #"//.*|\d+|\+|\-|\*|\/|\(|\)|\w+|\s*" string_list) [])
+    (if (or (re-matches #".*[+\-*\/]\s*$" string_list) (re-matches #"\W+" string_list))
+      [":ERROR" complete_string]
+      (is_OPERATION (re-seq #"//.*|\W+|\w+|\d+|\+|\-|\*|\/|\(|\)|\s*" string_list) [] complete_string)
     )
     (if (empty? string_list)
         NewList    
-      (let
-          [
-            string (str (first string_list))
-            operationTokenizer(cond
-                                (re-matches #"^\s*[0-9]+\s*$" string) (conj NewList [:NUMBER string])
-                                (re-matches #"\s*^[+\-*\/]\s*$" string) (conj NewList [:OPERATOR string])    
-                                (and (re-matches #"\s*\w+\s*$" string) (not (contains? (set reservedWords) string))) 
-                                  (conj NewList [:IDENTIFIER string])
-                                (re-matches #"\s*([(]|[)])\s*$" string) (conj NewList [:PARENTHESIS string])
-                                (re-matches #"^\s*$" string) (conj NewList [:SPACE " "])
-                                (re-matches #"^//.*" string) (conj NewList [:COMMENT string])
-                                :else (conj NewList [:ERROR string])       
-                              )
-          ]          
-          (is_OPERATION (rest string_list) operationTokenizer)
+        (if (= (count (re-seq #"\(" complete_string)) (count (re-seq #"\)" complete_string)))    
+          (let
+            [
+              string (str (first string_list))
+              operationTokenizer(cond
+                                  (re-matches #"^\s*[0-9]+\s*$" string) (conj NewList [:NUMBER string])
+                                  (re-matches #"\s*^[+\-*\/]\s*$" string) (conj NewList [:OPERATOR string])    
+                                  (and (re-matches #"\s*([a-zA-Z]+\w*)\s*$" string) (not (contains? (set reservedWords) string))) 
+                                    (conj NewList [:IDENTIFIER string])
+                                  (re-matches #"\s*[(]\s*$" string)   (conj NewList [:PARENTHESIS string]) 
+                                  (re-matches #"\s*[)]\s*$" string) (conj NewList [:PARENTHESIS string])
+                                  (re-matches #"^\s*$" string) (conj NewList [:SPACE " "])
+                                  (re-matches #"^//.*" string) (conj NewList [:COMMENT string])
+                                  :else  [":ERROR" complete_string]      
+                                )
+            ]          
+            (is_OPERATION (rest string_list) operationTokenizer complete_string)              
+          )
+        [":ERROR" complete_string]
       )
     )
   )
@@ -108,27 +112,31 @@
 )
 
 ;-------------------------------  Definicion de Variables ------------------------------------
-(defn is_VARIABLE_TOKENIZATION [string_list NewList error_found]
+(defn is_VARIABLE_TOKENIZATION [string_list NewList complete_string]
   (if (empty? string_list)
-    NewList
+    NewList       
     (let 
         [
           lineTokenizer (cond
                             (or (= (first string_list) "let") (= (first string_list) "const")) (conj NewList [:RESERVADO (first string_list)])
                             (re-matches #"[a-zA-Z]+\w*" (first string_list)) (conj NewList [:IDENTIFIER (first string_list)])
                             (re-matches #"^\s*[=]\s*$" (first string_list)) (conj NewList [:OPERATOR (first string_list)])
-                            :else (conj NewList (is_OPERATION  (first string_list) [] ))
+                            :else (conj NewList (is_OPERATION  (first string_list) [] complete_string))
                           )
         ]
-        (is_VARIABLE_TOKENIZATION (rest string_list) lineTokenizer error_found)
+        (if (some #(= ":ERROR" %) (flatten lineTokenizer))
+            [:ERROR complete_string]
+            (is_VARIABLE_TOKENIZATION (rest string_list) lineTokenizer complete_string)
+
+        )
     )
   )
 )
 
-(defn is_VARIABLE_DEFINITION [type variable operation string_list]
+(defn is_VARIABLE_DEFINITION [type variable operation string_list complete_string]
   (cond
-    (= type :DECLARATION) (is_VARIABLE_TOKENIZATION string_list [] 0)
-    (= type :RESTORATION) (is_VARIABLE_TOKENIZATION string_list [] 0)
+    (= type :DECLARATION) (is_VARIABLE_TOKENIZATION string_list [] complete_string)
+    (= type :RESTORATION) (is_VARIABLE_TOKENIZATION string_list [] complete_string)
   )
 )
 
@@ -140,14 +148,14 @@
         string_list (rest (first(re-seq #"^\s*(let|const|\s*)\s*(\w*)(\s*[=])(.*)\s*$" (str (first (rest token))) )))
       ]
     (cond 
-      (re-matches #"^\s*(let|const).*" (str (first (rest token)))) (is_VARIABLE_DEFINITION :DECLARATION variable operation string_list)
-      (re-matches #"^\s*.*" (str (first (rest token)))) (is_VARIABLE_DEFINITION :RESTORATION variable operation string_list)    
+      (re-matches #"^\s*(let|const).*" (str (first (rest token)))) (is_VARIABLE_DEFINITION :DECLARATION variable operation string_list (str (first (rest token))))
+      (re-matches #"^\s*.*" (str (first (rest token)))) (is_VARIABLE_DEFINITION :RESTORATION variable operation string_list (str (first (rest token))))    
     )
   )
 )
 
 ;-------------------------------  Definicion de Print ------------------------------------
-(defn is_PRINT_TOKENIZATION [string_list NewList error_found]
+(defn is_PRINT_TOKENIZATION [string_list NewList complete_string]
  (if (empty? string_list)
     NewList
     (let 
@@ -156,10 +164,13 @@
                             (= (first string_list) "print")  (conj NewList [:RESERVADO (first string_list)])
                             (re-matches #"^\s*\".*\"\s*$"  (first string_list)) 
                               (conj NewList [:STRING (first string_list)])
-                            :else (conj NewList (is_OPERATION  (first string_list) [] ))
+                            :else (conj NewList (is_OPERATION  (first string_list) [] complete_string))
                           )
         ]
-        (is_PRINT_TOKENIZATION (rest string_list) lineTokenizer error_found)
+        (if (some #(= ":ERROR" %) (flatten lineTokenizer))
+            [:ERROR complete_string]
+            (is_PRINT_TOKENIZATION (rest string_list) lineTokenizer complete_string)
+        )        
     )
   )
 )
@@ -169,7 +180,7 @@
       [
         string_list (rest (first(re-seq #"^\s*(print)\s*(.*)\s*$" (str (first (rest token))) )))
       ]
-    (is_PRINT_TOKENIZATION string_list [] 0)
+    (is_PRINT_TOKENIZATION string_list []  (str (first (rest token))) )
   )
 )
 
@@ -245,15 +256,12 @@
                             (= (first string_list) "for") (conj NewList [:RESERVADO (first string_list)])
                             (re-matches #"^[()]$" (first string_list)) (conj NewList [:PARENTHESIS (first string_list)])
                             (re-matches #"^[{}]$" (first string_list)) (conj NewList [:BRACKET (first string_list)])
-                            (=  (first string_list) "let") (conj NewList (is_VARIABLE_TOKENIZATION variable_definition [] 0 ) )
+                            (= (first string_list) "let") (conj NewList (is_VARIABLE_TOKENIZATION variable_definition [] (str variable_definition) ) )
                             (re-matches #"^[;]$" (first string_list)) (conj NewList [:SEPARATOR (first string_list)])
-                            (re-matches #"^\w+$" (first string_list)) (conj NewList (is_VARIABLE_TOKENIZATION increaser_definition [] 0 ) )
+                            (re-matches #"^\w+$" (first string_list)) (conj NewList (is_VARIABLE_TOKENIZATION increaser_definition [] (str increaser_definition) ) )
                             (re-matches #"\s*$" (first string_list))  (conj NewList [:SPACE (first string_list)])
-
                               ;(conj NewList [:SEPARATOR (first string_list)])
                             :else  (conj NewList (is_LOGIC (str logic_definition) []  ) )
-                            ;(conj NewList (is_VARIABLE_TOKENIZATION increaser_definition [] 0 ) )
-                            ;(do (print "hola")(conj NewList (is_VARIABLE_TOKENIZATION  increaser_definition [] 0 )))
                           )
         ]
         (is_FOR_TOKENIZATION (rest string_list) lineTokenizer error_found variable_definition logic_definition increaser_definition)
@@ -332,12 +340,12 @@
        "</body>\n</html>")
 )
 
-
 (with-open [reader (io/reader "entrada.txt")]
   (let [tokens (reduce (fn [acc line] (conj acc (tokenize_complete line))) [] (line-seq reader))
         LexicTokens (LexicAnalizer tokens [] 0 (count tokens))
-        output (generate-html LexicTokens)  
+        ;output (generate-html LexicTokens)  
       ]
-      (spit "output.html" output)
+      ;(spit "output.html" output)
+      (println LexicTokens)
   )
 )

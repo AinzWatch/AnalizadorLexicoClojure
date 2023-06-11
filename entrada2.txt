@@ -3,8 +3,7 @@
 print 5+5
 let abv3 = 5 
 let bas2 = 10 
-let c32 = 30 + 20 
-
+let c32 = 30 +5
 while(abv3 <10){
     let i = abv3+1
 }
