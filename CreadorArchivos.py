@@ -10,7 +10,8 @@ if not os.path.exists(directorio):
 # Contenido del archivo
 contenido = """let a = 1+2
 //comentario
-fora(let i = 0; i < 5; i = i+1){
+for(let i = 0; i < 5; i = i+1)
+{
     let b = 2
     b = 1+i
 }"""

@@ -1,11 +1,27 @@
-(require '[clojure.java.io :as io])
+(defn parse-expression [expression]
+  (let [operators {"+" + "-" - "*" * "/" /}
+        tokens (re-seq #"\d+|\+|\-|\*|\/" expression)]
 
-(defn read-txt-files [directory]
-  (let [files (file-seq (io/file directory))
-        txt-files (filter #(= (.getName %) ".txt") files)]
-    (map #(.getName %) txt-files)))
+    (reduce (fn [acc token]
+              (if-let [op (get operators token)]
+                (conj acc op)
+                (conj acc (if (re-matches #"\d+" token)
+                            (read-string token)
+                            token))))
+            '()
+            tokens)))
 
-(def txt-file-names (read-txt-files "C:/Users/eliez/OneDrive/Desktop/Clases/Clojure/archivos"))
+(defn format-expression [expression]
+  (let [[op arg1 arg2] expression]
+    (str "(" (str arg1) op  arg2 ")")
+  ))
 
-;; Imprime la lista de nombres de los archivos .txt
-(println txt-file-names)
+
+(defn eval-expression [expression]
+  (let [parsed (parse-expression expression)
+        formatted (format-expression parsed)]
+    (print parsed)
+    ;(eval (read-string formatted))
+    ))
+
+(println (eval-expression "1+2"))

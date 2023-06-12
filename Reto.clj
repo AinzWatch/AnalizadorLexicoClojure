@@ -1,4 +1,5 @@
 (require '[clojure.java.io :as io])
+(declare is_OPERATION)
 (def reservedWords ["let" "const" "function" "for" "while" "return" "print"])
 
 (defn tokenize_complete [line]
@@ -70,10 +71,11 @@
 )
 
 (defn is_OPERATION [string_list NewList complete_string]
+
   (if (string? string_list)
     (if (or (re-matches #".*[+\-*\/]\s*$" string_list) (re-matches #"\W+" string_list))
       [":ERROR" complete_string]
-      (is_OPERATION (re-seq #"//.*|\W+|\w+|\d+|\s*|\+|\-|\*|\/|\(|\)" string_list) [] complete_string)
+      (is_OPERATION (re-seq #"//.*|\W+|\w+|\d+|\+|\-|\*|\/|\(|\)|\s*" string_list) [] complete_string)
     )
     (if (empty? string_list)
         NewList    
@@ -120,9 +122,13 @@
                             (or (= (first string_list) "let") (= (first string_list) "const")) (conj NewList [:RESERVADO (first string_list)])
                             (re-matches #"[a-zA-Z]+\w*" (first string_list)) (conj NewList [:IDENTIFIER (first string_list)])
                             (re-matches #"^\s*[=]\s*$" (first string_list)) (conj NewList [:OPERATOR (first string_list)])
+                            (re-matches #"^\s*$" (first string_list)) (conj NewList [:SPACE (first string_list)])
+
                             :else (conj NewList (is_OPERATION  (first string_list) [] complete_string))
                           )
         ]
+      
+
         (if (some #(= ":ERROR" %) (flatten lineTokenizer))
             [:ERROR complete_string]
             (is_VARIABLE_TOKENIZATION (rest string_list) lineTokenizer complete_string)
@@ -193,7 +199,7 @@
           lineTokenizer (cond
                             (= (first string_list) "while") (conj NewList [:RESERVADO (first string_list)])
                             (re-matches #"^[()]$" (first string_list)) (conj NewList [:PARENTHESIS (first string_list)])
-                            (re-matches #"^[{}]$" (first string_list)) (conj NewList [:BRACKET (first string_list)])
+                            (re-matches #"^[{]$" (first string_list)) (conj NewList [:OPENER (first string_list)])
 
                             :else (conj NewList (is_LOGIC  (first string_list) [] ))
                           )
@@ -224,7 +230,7 @@
                 lineTokenizer (cond
                                   (= (first string_list) "function") (conj NewList [:RESERVADO (first string_list)])
                                   (re-matches #"^[()]$" (first string_list)) (conj NewList [:PARENTHESIS (first string_list)])
-                                  (re-matches #"^[{}]$" (first string_list)) (conj NewList [:BRACKET (first string_list)])
+                                  (re-matches #"^[{]$" (first string_list)) (conj NewList [:OPENER (first string_list)])
                                   :else (conj NewList (is_PARAMETER  (first string_list) [] ))
                                 )
               ]
@@ -247,6 +253,7 @@
 ;-------------------------------  Definicion de For ------------------------------------
 
 (defn is_FOR_TOKENIZATION [string_list NewList error_found variable_definition logic_definition increaser_definition]
+
   (if (empty? string_list)
     NewList
     (let 
@@ -254,7 +261,7 @@
           lineTokenizer (cond
                             (= (first string_list) "for") (conj NewList [:RESERVADO (first string_list)])
                             (re-matches #"^[()]$" (first string_list)) (conj NewList [:PARENTHESIS (first string_list)])
-                            (re-matches #"^[{}]$" (first string_list)) (conj NewList [:BRACKET (first string_list)])
+                            (re-matches #"^[{]$" (first string_list)) (conj NewList [:OPENER (first string_list)])
                             (= (first string_list) "let") (conj NewList (is_VARIABLE_TOKENIZATION variable_definition [] (str variable_definition) ) )
                             (re-matches #"^[;]$" (first string_list)) (conj NewList [:SEPARATOR (first string_list)])
                             (re-matches #"^\w+$" (first string_list)) (conj NewList (is_VARIABLE_TOKENIZATION increaser_definition [] (str increaser_definition) ) )
@@ -282,24 +289,52 @@
 )
 
 ;-------------------------------  Lexic Analizer  ------------------------------------
+(defn GetToken [list]
+  (if (empty? list)
+    :NONE
+    (if (keyword? (first list))
+        (first list)
+        (GetToken (first list))
+    )
+  )
+)
 
-(defn LexicAnalizer [tokensBase NewTokenizer index length]
+
+(defn LexicAnalizer [tokensBase NewTokenizer index length LastTokenBase LastToken NumBrackets]
+  ;(print NumBrackets)
   (if (>= index length)
-    NewTokenizer
+        NewTokenizer
+
     (let 
       [
         token (nth tokensBase index)
-        updatedTokenizer (cond
-                          (= (first token) :COMMENT) (conj NewTokenizer (is_COMMENT token))
-                          (= (first token) :VARIABLE) (conj NewTokenizer (is_VARIABLE token ))
-                          (= (first token) :PRINT) (conj NewTokenizer (is_PRINT token ))
-                          (= (first token) :WHILE) (conj NewTokenizer (is_While token ))
-                          (= (first token) :FUNCTION) (conj NewTokenizer (is_FUNCTION token ))
-                          (= (first token) :FOR) (conj NewTokenizer (is_FOR token ))
-                          :else (conj NewTokenizer token)
+        updatedTokenizer (if (or (= LastTokenBase :FOR) (= LastTokenBase :WHILE) (= LastTokenBase :FUNCTION))
+                              (cond
+                                (and (= (first token) :OPENER) (not= LastToken :ERROR)) (conj NewTokenizer token)
+                                :else (conj NewTokenizer [:ERROR  (first (rest token))])
+                              )
+                            (cond
+                                (= (first token) :COMMENT) (conj NewTokenizer (is_COMMENT token))
+                                (= (first token) :VARIABLE) (conj NewTokenizer (is_VARIABLE token ))
+                                (= (first token) :PRINT) (conj NewTokenizer (is_PRINT token ))
+                                (= (first token) :WHILE) (conj NewTokenizer (is_While token ))
+                                (= (first token) :FUNCTION) (conj NewTokenizer (is_FUNCTION token ))
+                                (= (first token) :FOR) (conj NewTokenizer (is_FOR token ))
+                                (= (first token) :NEWLINE) (conj NewTokenizer  token )
+                                (and (= (first token) :CLOSER) (> NumBrackets 0) (>= (- NumBrackets 1) 0)) (conj NewTokenizer token)
+                                :else (conj NewTokenizer [:ERROR  (first (rest token))])
+                              )
                          )
+        BracketsCounter (if (and (= (first token) :OPENER) (or (= LastTokenBase :FOR) (= LastTokenBase :WHILE) (= LastTokenBase :FUNCTION)) (not= LastToken :ERROR))
+                            (+ NumBrackets 1)
+                            (if (and (= (first token) :CLOSER) (>= (- NumBrackets 1) 0))
+                              (- NumBrackets 1)
+                              NumBrackets
+
+                            )
+                        )                              
       ]
-      (LexicAnalizer tokensBase updatedTokenizer (inc index) length)
+      (LexicAnalizer tokensBase updatedTokenizer (inc index) length  (first token) (GetToken (last updatedTokenizer)) BracketsCounter)
     )
   )
 )
@@ -352,14 +387,13 @@
    (println file-path)
    (with-open [reader (io/reader file-path)]
       (let [tokens (reduce (fn [acc line] (conj acc (tokenize_complete line))) [] (line-seq reader))
-            LexicTokens (LexicAnalizer tokens [] 0 (count tokens))
+            LexicTokens (LexicAnalizer tokens [] 0 (count tokens) nil nil 0)
             output (generate-html LexicTokens)  
             ]
             (spit (str file-path ".html") output)
       )
    )
 )
-
 
 (defn process-files [file-paths]
   (doall (pmap process-file file-paths)))
